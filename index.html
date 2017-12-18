@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf8">
+	<title>Via.js demo</title>
+</head>
+<body>
+
+<script src="viaReceiver.js"></script>
+
+<script>
+"use strict";
+
+let worker = null;
+
+document.addEventListener("DOMContentLoaded", function ()
+{
+	// Create worker
+	worker = new Worker("worker.js");
+	
+	// Hook up Via's messages with the worker's postMessage bridge
+	worker.onmessage = (e => Via.OnMessage(e.data));
+	Via.postMessage = (data => worker.postMessage(data));
+	
+	// Start the worker
+	worker.postMessage("start");
+});
+</script>
+</body>
+</html>
