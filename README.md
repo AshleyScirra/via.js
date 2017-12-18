@@ -3,6 +3,12 @@ Web Workers have a few APIs, but most web APIs are still only available in the m
 
 Via.js is not ready for production use; it's more of a proof-of-concept. See below for caveats.
 
+## Live demo
+
+A basic demo showing DOM interactions and use of the Web Audio API from a worker is hosted here: [https://ashleyscirra.github.io/via.js/](https://ashleyscirra.github.io/via.js/)
+
+This works in Chrome, Firefox and Edge. Safari works but doesn't play audio since the demo only uses AudioContext, not webkitAudioContext, other than that it works fine.
+
 ## Example
 
 Here are some DOM calls **that work in a Web Worker** using Via.js:
@@ -115,3 +121,5 @@ Performance could still be improved. The postMessage() overhead is still relativ
 JavaScript engines could try to further optimise Proxy objects so that building command lists is faster.
 
 Browsers themselves could potentially use a similar approach to provide built-in support for DOM APIs in workers. If it's integrated to the browser it could handle memory management automatically (avoiding a memory leak) and better optimise command list building and execution to further reduce the overhead. This library demonstrates that the concept can work reasonably well.
+
+Several browser APIs only work in a user input event, such as audio playback can only be started in a "touchend" event on iOS. This simply does not work with Web Workers, since they work asynchronously, so by the time you try to play audio it is no longer in the "touchend" event so the attempt is blocked. Browsers must fundamentally re-think the way user-gesture limited APIs work to fix this.
