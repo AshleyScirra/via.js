@@ -86,28 +86,32 @@ Here are some measurements providing a rough guide of the performance ballpark, 
 
 ```js
 const lorem_ipsum = ...;
+const body = document.body;
 
 for (let i = 0; i < 1000; ++i)
 {
 	const div = document.createElement("div");
 	div.textContent = lorem_ipsum.substr(Math.floor(Math.random() * lorem_ipsum.length / 2));
-	div.style.border = "1px solid blue";
-	div.style.padding = "1em";
-	document.body.appendChild(div);
+	const style = div.style;
+	style.border = "1px solid blue";
+	style.padding = "1em";
+	body.appendChild(div);
 }
 ```
 
-The following measurements were made on a HTC 10 (Android 7.0) with Chrome Dev 64.
+The following measurements were made on a HTC 10 (Android 7.0) with Chrome Dev 64. The test loop function was run 10 times and the first 3 results ignored as warmup runs. The results have quite a lot of variance due to garbage collection running during the test.
 
 ### Directly on DOM
-Running DOM calls: ~60ms
+Running DOM calls: ~30-40ms
 
-## Using Via.js in a worker
-- (Worker) Building command list: ~50ms
-- (Worker) Submitting commands (postMessage): ~15ms
-- (MainThread) Executing commands: ~85ms
+### Using Via.js in a worker
+- (Worker) Building command list: ~3-20ms
+- (Worker) Submitting commands (postMessage): ~10ms
+- (MainThread) Executing commands: ~60ms
 
-In both cases the browser then went on to do **~250ms of layout** for the 1000 added elements. Therefore it seems Via.js is not terribly slow; a good approximation is it takes about as long as the direct DOM calls do on both ends (worker and main thread). This may seem like no benefit, but there is one major difference: if all your code is on the main thread, the 250ms of layout is synchronous and will suspend all other JavaScript execution on the main thread. However if you make calls from the worker, **it carries on running JavaScript while the browser does layout**. That gives you another 250ms of execution time in the worker that you wouldn't have had on the main thread, and in this case it more than makes up for the overhead of Via.js.
+It appears building the command list is mostly bottlenecked on GC. The results have high variance, but in the best case, run amazingly quickly. Unlike real DOM calls building commands doesn't actually do any real work, so it makes sense it can be faster. Therefore it seems Via.js is not terribly slow; a good approximation is it takes about as long as the direct DOM calls do on both ends (worker and main thread).
+
+This may not seem like much benefit overall, but there is one major difference. In both cases the browser then went on to do **~250ms of layout** for the 1000 added elements. If all your code is on the main thread, the 250ms of layout is synchronous and will suspend all other JavaScript execution on the main thread. However if you make calls from the worker, **it carries on running JavaScript while the browser does layout**. That gives you another 250ms of execution time in the worker that you wouldn't have had on the main thread, and in this case it more than makes up for the overhead of Via.js.
 
 However if you spend that extra 250ms making more DOM calls from the worker, they will simply be queued up and will have to wait until layout finishes before they are run. In other words, DOM throughput isn't improved. Alternatively if you have other JavaScript-intensive code to run that doesn't involve DOM calls, then this is great - you get another 250ms to do useful work.
 
@@ -118,7 +122,7 @@ The biggest problem to solve is the memory leak. WeakRefs may be able to solve t
 
 Performance could still be improved. The postMessage() overhead is still relatively high. Using a binary format and transferring an ArrayBuffer, or using shared memory (SharedArrayBuffer), may be able to more or less completely eliminate this overhead. Note that if this overhead is eliminated, then building a command list on the worker is actually faster than running the DOM calls (~50ms vs. ~60ms in the measurements above).
 
-JavaScript engines could try to further optimise Proxy objects so that building command lists is faster.
+JavaScript engines could try to further optimise the code to build command lists. It looks like there is some amount of GC thrashing happening.
 
 Browsers themselves could potentially use a similar approach to provide built-in support for DOM APIs in workers. If it's integrated to the browser it could handle memory management automatically (avoiding a memory leak) and better optimise command list building and execution to further reduce the overhead. This library demonstrates that the concept can work reasonably well.
 

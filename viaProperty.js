@@ -10,7 +10,21 @@
 			if (property === Via.__TargetSymbol)
 				return target;
 			
-			return Via._MakeProperty(target._objectId, [...target._path, property]);
+			// It's common to repeatedly look up the same properties, e.g. calling
+			// via.document.body.appendChild() in a loop. To speed this up and relieve pressure on the GC,
+			// cache the proxy for the next property in the chain, so we return the same proxy every time.
+			// Proxys are immutable (apart from this cache) so this doesn't change any behavior, and avoids
+			// having to repeatedly re-create the Proxy and property array. Profiling shows this does help.
+			const nextCache = target._nextCache;
+			const existing = nextCache.get(property);
+			if (existing)
+				return existing;
+			
+			const path = target._path.slice(0);
+			path.push(property);
+			const ret = Via._MakeProperty(target._objectId, path);
+			nextCache.set(property, ret);		// add to next property cache
+			return ret;
 		},
 		
 		set(target, property, value, receiver)
@@ -55,6 +69,7 @@
 		const func = function () {};
 		func._objectId = objectId;
 		func._path = path;
+		func._nextCache = new Map();		// for recycling sub-property lookups
 		return new Proxy(func, ViaPropertyHandler);
 	}
 }
