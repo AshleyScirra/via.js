@@ -1,10 +1,10 @@
 "use strict";
 
 {
-	// Namespace (note the uppercase)
+	// Namespace for controller side (note the uppercase)
 	self.Via = {};
 
-	importScripts("viaObject.js", "viaProperty.js");
+	importScripts("via/controller/object.js", "via/controller/property.js");
 	
 	// Symbols used to look up the hidden values behind the Proxy objects.
 	Via.__TargetSymbol = Symbol();

@@ -6,7 +6,7 @@
 </head>
 <body>
 
-<script src="viaReceiver.js"></script>
+<script src="via/receiver/receiver.js"></script>
 
 <script>
 "use strict";
@@ -19,8 +19,8 @@ document.addEventListener("DOMContentLoaded", function ()
 	worker = new Worker("worker.js");
 	
 	// Hook up Via's messages with the worker's postMessage bridge
-	worker.onmessage = (e => Via.OnMessage(e.data));
-	Via.postMessage = (data => worker.postMessage(data));
+	worker.onmessage = (e => ViaReceiver.OnMessage(e.data));
+	ViaReceiver.postMessage = (data => worker.postMessage(data));
 	
 	// Start the worker
 	worker.postMessage("start");

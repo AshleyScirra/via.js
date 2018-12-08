@@ -1,8 +1,8 @@
 "use strict";
 
 {
-	// Namespace
-	self.Via = {};
+	// Namespace for receiver side (which is remotely controlled by the controller)
+	self.ViaReceiver = {};
 	
 	// The master map of object ID to the real object. Object ID 0 is always the global object on
 	// the main thread (i.e. window or self).
@@ -104,7 +104,7 @@
 	// in a map prevents them ever being collected.
 	function GetCallbackShim(id)
 	{
-		return ((...args) => Via.postMessage({
+		return ((...args) => ViaReceiver.postMessage({
 			"type": "callback",
 			"id": id,
 			"args": args.map(WrapArg)
@@ -130,7 +130,7 @@
 	}
 	
 	// Called when receiving a message from the worker.
-	Via.OnMessage = function (data)
+	ViaReceiver.OnMessage = function (data)
 	{
 		const getResults = [];		// list of values requested to pass back to worker
 		
@@ -141,7 +141,7 @@
 		}
 		
 		// Post back that we're done (so the flush promise resolves), and pass along any get values.
-		Via.postMessage({
+		ViaReceiver.postMessage({
 			"type": "done",
 			"flushId": data.flushId,
 			"getResults": getResults
