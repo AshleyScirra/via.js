@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf8">
+	<title>Via.js worker calls demo</title>
+</head>
+<body>
+
+<h1>Via.js - worker calls demo</h1>
+<p>In this demo JavaScript calls on the DOM are forwarded to a worker, using almost the same code that would be written if the code was on the same thread. In this case the controller is the DOM and the receiver is the worker. Use the button below to calculate if a number is prime or not; the prime test is done on a worker, ensuring it won't jank the page if it takes a long time to test.</p>
+
+<input type="number" id="number" value="98245166901019"> <button id="check">Check</button>
+<p id="result">Result...</p>
+
+<script src="../../via/controller/object.js"></script>
+<script src="../../via/controller/property.js"></script>
+<script src="../../via/controller/controller.js"></script>
+
+<script>
+"use strict";
+
+let worker = null;
+let primeCalculator = null;
+
+document.addEventListener("DOMContentLoaded", function ()
+{
+	// Create worker
+	worker = new Worker("worker.js");
+	
+	// Hook up Via's messages with the worker's postMessage bridge
+	Via.postMessage = (data => worker.postMessage(data));
+	worker.onmessage = (e => Via.OnMessage(e.data));
+	
+	// Start the worker
+	worker.postMessage("start");
+
+	// Set up prime testing. Note primeCalculator is created with via,
+	// so is a placeholder object representing the object on the worker.
+	primeCalculator = new via.PrimeCalculator();
+	document.getElementById("check").onclick = CheckPrime;
+});
+
+async function CheckPrime()
+{
+	const resultElem = document.getElementById("result");
+
+	const n = parseFloat(document.getElementById("number").value);
+	if (!isFinite(n))
+	{
+		resultElem.textContent = "Invalid number";
+		return;
+	}
+
+	resultElem.textContent = "Checking...";
+	const startTime = performance.now();
+
+	// primeCalculator is on the worker, but IsPrime() can be called normally.
+	const ret = primeCalculator.IsPrime(n);
+
+	// Via.js returns placeholder objects from all calls, so they can be used in subsequent
+	// calls without having to wait for the result. However in this case we want to retrieve
+	// the actual value from the placeholder, which we can do with get().
+	const isPrime = await get(ret);
+
+	const duration = performance.now() - startTime;
+	resultElem.textContent = `Is prime: ${isPrime} (took ${duration} ms)`;
+}
+</script>
+</body>
+</html>
