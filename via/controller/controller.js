@@ -13,6 +13,9 @@
 	// to also drop references. If this is not supported, it will unavoidably leak memory.
 	Via.weakFactory = (typeof WeakFactory === "undefined" ? null : new WeakFactory(Cleanup));
 
+	if (!Via.weakFactory)
+		console.warn("[Via.js] No WeakFactory support - will leak memory");
+
 	function Cleanup(items)
 	{
 		// The WeakCells used to detect GC on the controller's Proxy objects use the object ID
