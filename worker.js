@@ -4,7 +4,7 @@ self.addEventListener("message", e =>
 {
 	if (e.data === "start")
 	{
-		importScripts("via.js");
+		importScripts("via/controller/controller.js");
 		Via.postMessage = (data => self.postMessage(data));
 		Start();
 	}
