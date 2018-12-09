@@ -225,30 +225,22 @@
 	// Return a promise that resolves with the real value of a property, e.g. get(via.document.title).
 	// This involves a message round-trip, but multiple gets can be requested in parallel, and they will
 	// all be processed in the same round-trip.
-	self.get = async function (proxy)
+	self.get = function (proxy)
 	{
 		if (typeof proxy === "function")
 		{
-			const target = proxy[Via.__TargetSymbol];
-			if (!target)
-			{
-				const objectId = proxy[Via.__ObjectSymbol];
-				
-				if (typeof objectId === "number")
-				{
-					return AddGet(objectId, null);
-				}
-				else
-				{
-					return proxy;
-				}
-			}
+			// Identify Via object proxy by testing if its object symbol returns a number
+			const objectId = proxy[Via.__ObjectSymbol];
+			if (typeof objectId === "number")
+				return AddGet(objectId, null);		// null path will return object itself (e.g. in case it's a primitive)
 			
-			return AddGet(target._objectId, target._path);
+			// Identify Via property proxy by testing if its target symbol returns anything
+			const target = proxy[Via.__TargetSymbol];
+			if (target)
+				return AddGet(target._objectId, target._path);
 		}
-		else
-		{
-			return proxy;
-		}
+			
+		// If the passed object isn't recognized as a Via object, just return it wrapped in a promise.
+		return Promise.resolve(proxy);
 	}
 }
