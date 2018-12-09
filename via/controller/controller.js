@@ -2,9 +2,8 @@
 
 {
 	// Namespace for controller side (note the uppercase)
-	self.Via = {};
-
-	importScripts("via/controller/object.js", "via/controller/property.js");
+	if (!self.Via)
+		self.Via = {};
 	
 	// Symbols used to look up the hidden values behind the Proxy objects.
 	Via.__TargetSymbol = Symbol();

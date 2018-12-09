@@ -4,7 +4,10 @@ self.addEventListener("message", e =>
 {
 	if (e.data === "start")
 	{
-		importScripts("via/controller/controller.js");
+		importScripts("../../via/controller/object.js",
+					  "../../via/controller/property.js",
+					  "../../via/controller/controller.js");
+		
 		Via.postMessage = (data => self.postMessage(data));
 		Start();
 	}
@@ -27,7 +30,7 @@ async function Start()
 	console.log("Document title is: " + docTitle + ", URL is: " + docUrl);
 	
 	const h1 = document.createElement("h1");
-	h1.textContent = "Via.js demo";
+	h1.textContent = "Via.js - using DOM in worker";
 	document.body.appendChild(h1);
 	
 	const p = document.createElement("p");

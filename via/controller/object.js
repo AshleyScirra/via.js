@@ -1,6 +1,9 @@
 "use strict";
 
 {
+	if (!self.Via)
+		self.Via = {};
+	
 	const ViaObjectHandler =
 	{
 		get(target, property, receiver)
