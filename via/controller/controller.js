@@ -9,8 +9,23 @@
 	// Symbols used to look up the hidden values behind the Proxy objects.
 	Via.__TargetSymbol = Symbol();
 	Via.__ObjectSymbol = Symbol();
+
+	// A WeakFactory (if supported) that can identify when objects are collected to notify the receiver
+	// to also drop references. If this is not supported, it will unavoidably leak memory.
+	Via.weakFactory = (typeof WeakFactory === "undefined" ? null : new WeakFactory(Cleanup));
+
+	function Cleanup(items)
+	{
+		// The WeakCells used to detect GC on the controller's Proxy objects use the object ID
+		// in the WeakCell's holdings. So map the cleanup items to their IDs and pass that to
+		// the receiver for deletion from the ID map.
+		Via.postMessage({
+			"type": "cleanup",
+			"ids": [...items].map(o => o.holdings)
+		});
+	}
 	
-	let nextObjectId = 1;							// next object ID to allocate
+	let nextObjectId = 1;							// next object ID to allocate (controller side uses positive IDs)
 	const queue = [];								// queue of messages waiting to post
 	let nextGetId = 0;								// next get request ID to allocate
 	const pendingGetResolves = new Map();			// map of get request ID -> promise resolve function
@@ -19,14 +34,14 @@
 	let isPendingFlush = false;						// has set a flush to run at the next microtask
 	
 	// Callback functions are assigned an ID which is passed to a call's arguments.
-	// The main thread creates a shim which forwards the callback back to the worker, where
-	// it's looked up in the map by its ID again and then the worker-side callback invoked.
+	// The receiver creates a shim which forwards the callback back to the controller, where
+	// it's looked up in the map by its ID again and then the controller-side callback invoked.
 	let nextCallbackId = 0;
 	const callbackToId = new Map();
 	const idToCallback = new Map();
 	
 	// Create a default 'via' object (note the lowercase) representing the
-	// global window object on the main thread
+	// global object on the receiver side
 	self.via = Via._MakeObject(0);
 	
 	Via._GetNextObjectId = function ()
@@ -46,7 +61,7 @@
 		}
 	};
 	
-	// Post the queue to the main thread. Returns a promise which resolves when the main thread
+	// Post the queue to the receiver. Returns a promise which resolves when the receiver
 	// has finished executing all the commands.
 	Via.Flush = function ()
 	{
@@ -58,6 +73,7 @@
 		const flushId = nextFlushId++;
 		
 		Via.postMessage({
+			"type": "cmds",
 			"cmds": queue,
 			"flushId": flushId
 		});
@@ -70,22 +86,25 @@
 		});
 	};
 	
-	// Called when a message received from the main thread
+	// Called when a message received from the receiver
 	Via.OnMessage = function (data)
 	{
-		if (data.type === "done")
+		switch (data.type) {
+		case "done":
 			OnDone(data);
-		else if (data.type === "callback")
+			break;
+		case "callback":
 			OnCallback(data);
-		else
+			break;
+		default:
 			throw new Error("invalid message type: " + data.type);
+		}
 	};
 
-	// Called when the main thread has finished a batch of commands passed by a flush.
+	// Called when the receiver has finished a batch of commands passed by a flush.
 	function OnDone(data)
 	{
-		// Resolve any pending get requests with the values retrieved from the main thread.
-		const getResults = data.getResults;
+		// Resolve any pending get requests with the values retrieved from the receiver.
 		for (const [getId, valueData] of data.getResults)
 		{
 			const resolve = pendingGetResolves.get(getId);
@@ -106,7 +125,7 @@
 		flushResolve();
 	}
 	
-	// Called when a callback is invoked on the main thread and this was forwarded to the worker.
+	// Called when a callback is invoked on the receiver and this was forwarded to the controller.
 	function OnCallback(data)
 	{
 		const func = idToCallback.get(data.id);
@@ -140,7 +159,7 @@
 	}
 
 	// Wrap an argument to a small array representing the value, object, property or callback for
-	// posting to the main thread.
+	// posting to the receiver.
 	Via._WrapArg = function(arg)
 	{
 		// The Proxy objects used for objects and properties identify as functions.
@@ -175,7 +194,7 @@
 			throw new Error("invalid argument");
 	}
 	
-	// Unwrap an argument for a callback sent by the main thread.
+	// Unwrap an argument for a callback sent by the receiver.
 	Via._UnwrapArg = function (arr)
 	{
 		switch (arr[0])	{
@@ -230,10 +249,4 @@
 			return proxy;
 		}
 	}
-	
-	// Clear the ID maps on the main thread as a poor attempt to avoid a memory leak.
-	Via.ResetReferences = function ()
-	{
-		Via._AddToQueue([3 /* reset */]);
-	};
 }

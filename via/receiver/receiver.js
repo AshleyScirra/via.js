@@ -1,24 +1,19 @@
 "use strict";
 
 {
-	// Namespace for receiver side (which is remotely controlled by the controller)
+	// Namespace for receiver side (which receives calls from the controller side)
 	self.ViaReceiver = {};
 	
 	// The master map of object ID to the real object. Object ID 0 is always the global object on
-	// the main thread (i.e. window or self).
-	// TODO: find a way to store this without leaking every object that ever gets assigned an ID!
-	// Keeping objects in the map will prevent them being collected. We need something like a WeakMap
-	// that has weak values instead of keys, but that would make GC observable so doesn't exist in JS.
+	// the receiver (i.e. window or self). IDs are removed by cleanup messages, which are sent
+	// by the controller when the Proxy with that ID is garbage collected (which requires WeakCell
+	// support), indicating it cannot be used any more. This is important to avoid a memory leak,
+	// since if the IDs are left behind they will prevent the associated object being collected.
 	const idMap = new Map([[0, self]]);
 	
-	// Map objects back to their real ID, so we can recycle IDs. This isn't particularly effective
-	// since the worker will keep creating new IDs for any re-used objects/properties, since
-	// it can't prove if they'll return the same value or not, but it's worth trying.
-	const reverseMap = new Map([[self, 0]]);
-	
-	// Some objects are allocated an ID here on the main thread, when running a callback with
-	// a not-yet-seen object as a parameter. To avoid ID collisions with the worker, main thread
-	// object IDs are negative and decrement and worker object IDs are positive and increment.
+	// Some objects are allocated an ID here on the receiver side, when running callbacks with
+	// object parameters. To avoid ID collisions with the controller, receiver object IDs are
+	// negative and decrement, and controller object IDs are positive and increment.
 	let nextObjectId = -1;
 	
 	// Get the real object from an ID.
@@ -32,32 +27,13 @@
 		return ret;
 	}
 	
-	// Get the existing ID from an object if any, allowing IDs to be recycled.
-	// Otherwise allocate a new ID for this object.
+	// Allocate new ID for an object on the receiver side.
+	// The receiver uses negative IDs to prevent ID collisions with the controller.
 	function ObjectToId(object)
 	{
-		let id = reverseMap.get(object);
-		
-		if (typeof id === "undefined")
-		{
-			// Allocate new ID. The main thread uses negative IDs to prevent collisions with the worker.
-			id = nextObjectId--;
-			idMap.set(id, object);
-			reverseMap.set(object, id);
-			return id;
-		}
-		
-		return id;
-	}
-	
-	// Add a new object to the ID map. This is used when the worker tells us what it has assigned for
-	// a new object ID returned by a call or construct command. Note there's no point trying to re-use
-	// IDs here: the worker has already gone ahead and used this object ID to refer to this object, so
-	// we have to permanently map it.
-	function AddToIdMap(object, id)
-	{
+		const id = nextObjectId--;
 		idMap.set(id, object);
-		reverseMap.set(object, id);
+		return id;
 	}
 	
 	// Get the real value from an ID and a property path, e.g. object ID 0, path ["document", "title"]
@@ -84,7 +60,7 @@
 				(o instanceof Blob) || (o instanceof ArrayBuffer) || (o instanceof ImageData);
 	}
 	
-	// Wrap an argument. This is used for sending values back to the worker. Anything that can be directly
+	// Wrap an argument. This is used for sending values back to the controller. Anything that can be directly
 	// posted is sent as-is, but any kind of object is represented by its object ID instead.
 	function WrapArg(arg)
 	{
@@ -99,9 +75,8 @@
 	}
 	
 	// Get a shim function for a given callback ID. This creates a new function that forwards the
-	// call with its arguments to the worker, where it will run the real callback.
-	// Callback functions are not re-used even if their ID is used repeatedly, since storing them
-	// in a map prevents them ever being collected.
+	// call with its arguments to the controller, where it will run the real callback.
+	// Callback functions are not re-used to allow them to be garbage collected normally.
 	function GetCallbackShim(id)
 	{
 		return ((...args) => ViaReceiver.postMessage({
@@ -111,8 +86,8 @@
 		}));
 	}
 	
-	// Unwrap an argument sent from the worker. Arguments are transported as small arrays indicating
-	// the type and any object IDs/property paths, so they can be looked up on the main thread.
+	// Unwrap an argument sent from the controller. Arguments are transported as small arrays indicating
+	// the type and any object IDs/property paths, so they can be looked up on the receiver side.
 	function UnwrapArg(arr)
 	{
 		switch (arr[0])	{
@@ -129,10 +104,25 @@
 		}
 	}
 	
-	// Called when receiving a message from the worker.
+	// Called when receiving a message from the controller.
 	ViaReceiver.OnMessage = function (data)
 	{
-		const getResults = [];		// list of values requested to pass back to worker
+		switch (data.type) {
+		case "cmds":
+			OnCommandsMessage(data);
+			break;
+		case "cleanup":
+			OnCleanupMessage(data);
+			break;
+		default:
+			console.error("Unknown message type: " + data.type);
+			break;
+		}
+	};
+
+	function OnCommandsMessage(data)
+	{
+		const getResults = [];		// list of values requested to pass back to controller
 		
 		// Run all sent commands
 		for (const cmd of data.cmds)
@@ -162,10 +152,7 @@
 		case 2:		// get
 			ViaGet(arr[1], arr[2], arr[3], getResults);
 			break;
-		case 3:		// reset
-			ViaResetReferences();
-			break;
-		case 4:		// constructor
+		case 3:		// constructor
 			ViaConstruct(arr[1], arr[2], arr[3], arr[4]);
 			break;
 		default:
@@ -187,7 +174,7 @@
 		}
 		
 		const ret = base[methodName](...args);
-		AddToIdMap(ret, returnObjectId);
+		idMap.set(returnObjectId, ret);
 	}
 	
 	function ViaConstruct(objectId, path, argsData, returnObjectId)
@@ -204,7 +191,7 @@
 		}
 		
 		const ret = new base[methodName](...args);
-		AddToIdMap(ret, returnObjectId);
+		idMap.set(returnObjectId, ret);
 	}
 	
 	function ViaSet(objectId, path, valueData)
@@ -245,12 +232,13 @@
 		const value = base[propertyName];
 		getResults.push([getId, WrapArg(value)]);
 	}
-	
-	function ViaResetReferences()
+
+	function OnCleanupMessage(data)
 	{
-		idMap.clear();
-		reverseMap.clear();
-		idMap.set(0, self);
-		reverseMap.set(self, 0);
+		// Delete a list of IDs sent from the controller from the ID map. This happens when
+		// the Proxys on the controller side with these IDs are garbage collected, so the IDs
+		// on the receiver can be dropped ensuring the associated objects can be collected.
+		for (const id of data.ids)
+			idMap.delete(id);
 	}
 }

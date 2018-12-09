@@ -55,7 +55,7 @@
 			// The command handler is also the same as when calling a function, except it uses 'new'.
 			const returnObjectId = Via._GetNextObjectId();
 			
-			Via._AddToQueue([4 /* construct */, target._objectId, target._path, argumentsList.map(Via._WrapArg), returnObjectId]);
+			Via._AddToQueue([3 /* construct */, target._objectId, target._path, argumentsList.map(Via._WrapArg), returnObjectId]);
 			
 			return Via._MakeObject(returnObjectId);
 		}

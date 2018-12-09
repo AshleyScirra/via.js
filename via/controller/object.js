@@ -28,6 +28,15 @@
 		// So use a function object as the target, and stash the object ID on it.
 		const func = function() {};
 		func._objectId = id;
-		return new Proxy(func, ViaObjectHandler);
+		const ret = new Proxy(func, ViaObjectHandler);
+
+		// When supported, create a WeakCell for the proxy with its ID for its
+		// holdings value. This allows GC of the Proxy object to notify the receiver
+		// side that its ID can be dropped, ensuring the real object can be collected
+		// as well. If WeakCell is not supported it will leak memory!
+		if (Via.weakFactory)
+			Via.weakFactory.makeCell(ret, id);
+		
+		return ret;
 	}
 }
