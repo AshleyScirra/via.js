@@ -4,7 +4,7 @@ Via.js lets you write JavaScript code that runs in a different context. The two 
 - **Use the DOM in a Web Worker**: write DOM calls in a worker and have them run on the main thread
 - **Write code that conveniently calls Web Worker code on the DOM**: write calls that automatically happen on a Web Worker, helping prevent heavy JavaScript calls janking the main thread. This is similar in spirit to [ComLink](https://github.com/GoogleChromeLabs/comlink), although Via.js does it differently.
 
-Via.js currently unavoidably leaks memory since it requires [WeakRefs](https://github.com/tc39/proposal-weakrefs/blob/master/specs/weakrefs.md) to clean up memory, and they're not currently supported by default in any browser. This means it's probably **not production-ready yet**, but should be in future when WeakRefs are supported. See the notes on memory management below.
+Via.js currently unavoidably leaks memory since it requires [WeakRefs](https://github.com/tc39/proposal-weakrefs/) to clean up memory, and they're not currently supported by default in any browser. This means it's probably **not production-ready yet**, but should be in future when WeakRefs are supported. See the notes on memory management below.
 
 # Examples
 ## Using the DOM in a Web Worker
