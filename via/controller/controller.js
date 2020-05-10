@@ -9,22 +9,38 @@
 	Via.__TargetSymbol = Symbol();
 	Via.__ObjectSymbol = Symbol();
 
-	// A WeakFactory (if supported) that can identify when objects are collected to notify the receiver
-	// to also drop references. If this is not supported, it will unavoidably leak memory.
-	Via.weakFactory = (typeof WeakFactory === "undefined" ? null : new WeakFactory(Cleanup));
+	// A FinalizationRegistry (if supported) that can identify when objects are garbage collected to notify the
+	// receiver to also drop references. If this is not supported, it will unavoidably leak memory.
+	Via.finalizationRegistry = (typeof FinalizationRegistry === "undefined" ? null : new FinalizationRegistry(FinalizeID));
 
-	if (!Via.weakFactory)
-		console.warn("[Via.js] No WeakFactory support - will leak memory");
+	if (!Via.finalizationRegistry)
+		console.warn("[Via.js] No WeakRefs support - will leak memory");
 
-	function Cleanup(items)
+	// FinalizeID is called once per ID. To improve the efficiency when posting cleanup messages to the other
+	// side, batch together all finalized IDs that happen in an interval using a timer, and post one message
+	// at the end of that timer.
+	let finalizeTimerId = -1;
+	const finalizeIntervalMs = 10;
+	const finalizeIdQueue = [];
+
+	function FinalizeID(id)
 	{
-		// The WeakCells used to detect GC on the controller's Proxy objects use the object ID
-		// in the WeakCell's holdings. So map the cleanup items to their IDs and pass that to
-		// the receiver for deletion from the ID map.
+		finalizeIdQueue.push(id);
+
+		if (finalizeTimerId === -1)
+			finalizeTimerId = setTimeout(CleanupIDs, finalizeIntervalMs);
+	}
+
+	function CleanupIDs()
+	{
+		finalizeTimerId = -1;
+
 		Via.postMessage({
 			"type": "cleanup",
-			"ids": [...items].map(o => o.holdings)
+			"ids": finalizeIdQueue
 		});
+
+		finalizeIdQueue.length = 0;
 	}
 	
 	let nextObjectId = 1;							// next object ID to allocate (controller side uses positive IDs)

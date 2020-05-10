@@ -4,7 +4,7 @@ Via.js lets you write JavaScript code that runs in a different context. The two 
 - **Use the DOM in a Web Worker**: write DOM calls in a worker and have them run on the main thread
 - **Write code that conveniently calls Web Worker code on the DOM**: write calls that automatically happen on a Web Worker, helping prevent heavy JavaScript calls janking the main thread. This is similar in spirit to [ComLink](https://github.com/GoogleChromeLabs/comlink), although Via.js does it differently.
 
-Via.js currently unavoidably leaks memory since it requires [WeakRefs](https://github.com/tc39/proposal-weakrefs/blob/master/specs/weakrefs.md) to clean up memory, and they're not currently supported by default in any browser. This means it's probably **not production-ready yet**, but should be in future when WeakRefs are supported. See the notes on memory management below.
+Note Via.js requires [WeakRefs](https://github.com/tc39/proposal-weakrefs) to clean up memory and avoid memory leaks. This is [supported in Chrome 84+](https://www.chromestatus.com/feature/5892186633666560), and it appears to be in development for other browsers. If WeakRefs are not supported Via.js will continue to work, but will unavoidably leak memory.
 
 # Examples
 ## Using the DOM in a Web Worker
@@ -77,7 +77,7 @@ The main difficulty with implementing this approach is memory management. Each P
 
 Until recently this was impossible to achieve in JavaScript. However the [WeakRefs proposal](https://github.com/tc39/proposal-weakrefs) makes GC observable, making it possible to identify when Proxys are collected and post a cleanup message to the receiver side, which then deletes unused map entries.
 
-At time of writing, WeakRefs are implemented behind a flag in Chrome Canary 73.0.3635.0. Via.js includes support for this to clean up memory and avoid leaking; however the spec looks set to change so this will probably stop working soon. Via.js currently uses the WeakFactory API; if it hasn't changed yet you can try it by running Canary with the command-line `chrome --js-flags="--harmony-weak-refs"`. If WeakFactory is not supported, it falls back to leaking memory! So be warned: Via.js is not production ready yet.
+WeakRefs are enabled by default in Chrome 84+, and support in other browsers should come soon. This should make Via.js ready for use in production, since it can be used in long-running apps without leaking memory.
 
 # API
 Via.js needs you to set up a messaging bridge. In theory you could do something crazy like use a WebSocket or DataChannel bridge and run remote code over a network link! Normally you'd just wrap postMessage though. For real code see how the examples do this. However assuming you're controlling the DOM from a Worker, then the controller (worker) side does this along the lines of:
@@ -141,48 +141,17 @@ const [docTitle, docUrl] = await Promise.all([
 This processes both gets with a single postMessage round-trip.
 
 # Performance
-*Note: these measurements were taken prior to some significant code updates, so probably need to be updated*
+I last did performance tests about 2 years ago, so this section needs updating. However the conclusion last time was that Via.js has a pretty low overhead and is usable even on mobile devices. Performance benchmarks seemed to be mainly bottlenecked on GC (probably collecting the command list), which can probably be improved.
 
-Here are some measurements providing a rough guide of the performance ballpark, comparing creating 1000 div elements with randomised contents both directly in the DOM and with Via.js in a worker. The test code is as follows:
-
-```js
-const lorem_ipsum = ...;
-const body = document.body;
-
-for (let i = 0; i < 1000; ++i)
-{
-	const div = document.createElement("div");
-	div.textContent = lorem_ipsum.substr(Math.floor(Math.random() * lorem_ipsum.length / 2));
-	const style = div.style;
-	style.border = "1px solid blue";
-	style.padding = "1em";
-	body.appendChild(div);
-}
-```
-
-The following measurements were made on a HTC 10 (Android 7.0) with Chrome Dev 64. The test loop function was run 10 times and the first 3 results ignored as warmup runs. The results have quite a lot of variance due to garbage collection running during the test.
-
-### Directly on DOM
-Running DOM calls: ~30-40ms
-
-### Using Via.js in a worker
-- (Worker) Building command list: ~3-20ms
-- (Worker) Submitting commands (postMessage): ~10ms
-- (MainThread) Executing commands: ~60ms
-
-It appears building the command list is mostly bottlenecked on GC. The results have high variance, but in the best case, run amazingly quickly. Unlike real DOM calls building commands doesn't actually do any real work, so it makes sense it can be faster. Therefore it seems Via.js is not terribly slow; a good approximation is it takes about as long as the direct DOM calls do on both ends (worker and main thread).
-
-This may not seem like much benefit overall, but there is one major difference. In both cases the browser then went on to do **~250ms of layout** for the 1000 added elements. If all your code is on the main thread, the 250ms of layout is synchronous and will suspend all other JavaScript execution on the main thread. However if you make calls from the worker, **it carries on running JavaScript while the browser does layout**. That gives you another 250ms of execution time in the worker that you wouldn't have had on the main thread, and in this case it more than makes up for the overhead of Via.js.
-
-However if you spend that extra 250ms making more DOM calls from the worker, they will simply be queued up and will have to wait until layout finishes before they are run. In other words, DOM throughput isn't improved. Alternatively if you have other JavaScript-intensive code to run that doesn't involve DOM calls, then this is great - you get another 250ms to do useful work.
-
-In summary, it seems the overhead of Via.js isn't huge, and providing you have lots of non-DOM JavaScript code to run, being able to run it in parallel to layout is a huge advantage. In other cases, such as making a handful of calls to use the Web Audio API, the performance overhead probably isn't significant while providing a great convenience.
+There are also major performance benefits to running code in a worker instead of a DOM. For example significant DOM updates can involve long layout times (e.g. >100ms). When running code in a worker with Via.js, the synchronous layout work the browser does in response to DOM changes can run in parallel to the worker, which wins you a lot more time for running JavaScript.
 
 # Further work
-WeakRefs need to be widely supported before this library will be useful.
+WeakRefs need to be widely supported before this can be used widely in production, but that seems to be on the way.
 
-Performance could still be improved. The postMessage() overhead is still relatively high. Using a binary format and transferring an ArrayBuffer, or using shared memory (SharedArrayBuffer), may be able to more or less completely eliminate this overhead. Note that if this overhead is eliminated, then building a command list on the worker can be faster than running the DOM calls (~13ms vs. ~30ms in the measurements above).
+Performance could still be improved. The postMessage() overhead is still relatively high. Using a binary format and transferring an ArrayBuffer, or using shared memory (SharedArrayBuffer), may be able to more or less completely eliminate this overhead.
 
 JavaScript engines could try to further optimise the code to build command lists. It looks like there is some amount of GC thrashing happening.
 
 Some APIs must be called synchronously in callbacks, e.g. `e.preventDefault()`. Currently these don't work with Via.js, because it must do a postMessage round-trip to invoke the callback and then send back new commands, by which time the event handler has finished. Browsers need to provide a deferral mechanism to work around this, which in turn would need to be integrated in to Via.js somehow.
+
+There probably needs to be more work done to identify gaps in things Via.js supports, fix any bugs, and improve the developer experience, in particular ensuring good error messages can be produced when making mistakes using placeholder objects.

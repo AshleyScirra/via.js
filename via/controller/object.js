@@ -33,12 +33,12 @@
 		func._objectId = id;
 		const ret = new Proxy(func, ViaObjectHandler);
 
-		// When supported, create a WeakCell for the proxy with its ID for its
-		// holdings value. This allows GC of the Proxy object to notify the receiver
+		// When supported, register the returned object in the finalization registry with
+		// its associated ID. This allows GC of the Proxy object to notify the receiver
 		// side that its ID can be dropped, ensuring the real object can be collected
-		// as well. If WeakCell is not supported it will leak memory!
-		if (Via.weakFactory)
-			Via.weakFactory.makeCell(ret, id);
+		// as well. If this is not supported it will leak memory!
+		if (Via.finalizationRegistry)
+			Via.finalizationRegistry.register(ret, id);
 		
 		return ret;
 	}
