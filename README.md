@@ -4,7 +4,7 @@ Via.js lets you write JavaScript code that runs in a different context. The two 
 - **Use the DOM in a Web Worker**: write DOM calls in a worker and have them run on the main thread
 - **Write code that conveniently calls Web Worker code on the DOM**: write calls that automatically happen on a Web Worker, helping prevent heavy JavaScript calls janking the main thread. This is similar in spirit to [ComLink](https://github.com/GoogleChromeLabs/comlink), although Via.js does it differently.
 
-Note Via.js requires [WeakRefs](https://github.com/tc39/proposal-weakrefs) to clean up memory and avoid memory leaks. This is supported in [Chrome 84+](https://www.chromestatus.com/feature/5892186633666560), [Firefox 79+](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/79), and appears to be [in development for Safari](https://bugs.webkit.org/show_bug.cgi?id=198710). If WeakRefs are not supported Via.js will continue to work, but will unavoidably leak memory.
+Note Via.js requires [WeakRefs](https://github.com/tc39/proposal-weakrefs) to clean up memory and avoid memory leaks. This is supported in [Chrome 84+](https://www.chromestatus.com/feature/5892186633666560), [Firefox 79+](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/79), and [Safari 14.1+](https://developer.apple.com/documentation/safari-release-notes/safari-14_1-release-notes). (If WeakRefs are not supported Via.js will continue to work, but will unavoidably leak memory.)
 
 # Examples
 ## Using the DOM in a Web Worker
@@ -146,8 +146,6 @@ I last did performance tests about 2 years ago, so this section needs updating. 
 There are also major performance benefits to running code in a worker instead of a DOM. For example significant DOM updates can involve long layout times (e.g. >100ms). When running code in a worker with Via.js, the synchronous layout work the browser does in response to DOM changes can run in parallel to the worker, which wins you a lot more time for running JavaScript.
 
 # Further work
-WeakRefs need to be widely supported before this can be used widely in production, but that seems to be on the way.
-
 Performance could still be improved. The postMessage() overhead is still relatively high. Using a binary format and transferring an ArrayBuffer, or using shared memory (SharedArrayBuffer), may be able to more or less completely eliminate this overhead.
 
 JavaScript engines could try to further optimise the code to build command lists. It looks like there is some amount of GC thrashing happening.
